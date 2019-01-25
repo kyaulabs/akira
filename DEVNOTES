@@ -1,0 +1,9 @@
+# bot-based botlog
+::*akira::botlog "gave key: ${chan}: $frombot $fromhost <+[botattr $frombot]> [getuser $frombot BOTADDR]"
+
+# user-based bottlog
+if { [catch { idx2ip $idx } longip] } { set longip - }
+if { [catch { idx2host $idx } host] } { foreach w [dcclist] { if { $idx == [lindex $w 0] } { set host [lindex $w 2] } } }
+::*akira::botlog "command: [join $args]: [list $handle] <+[set f [chattr $handle]]> $idx [list $host] ($longip)"
+
+# vim: ft=tcl sw=4 ts=4 noet:
