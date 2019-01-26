@@ -1,4 +1,4 @@
-# $Arch: akira.tcl,v 2.053 2019/01/24 16:18:30 kyau Exp $
+# $Arch: akira.tcl,v 2.057 2019/01/25 16:11:03 kyau Exp $
 #
 #   █████████▀█ █████████ █ ▀▀▀▀▀▀▀▀▀▀ █████████▀█ █████████▀█
 #   █████████ █ █████████ █ ██████████ █████████ █ █████████ █
@@ -273,9 +273,9 @@ namespace eval ::*akira {
 
 	variable author "kyau"
 	variable t9version "1.045(hc1.8.4)"
-	variable version "2.053+cbc"
+	variable version "2.057+cbc"
 	variable hcversion "${ctcp-version}"
-	variable release_date "2019.01.24"
+	variable release_date "2019.01.25"
 	variable ishub 0
 	variable isinfo 0
 	
@@ -633,6 +633,9 @@ namespace eval ::*akira {
 		puthelp "PRIVMSG $chan :\00311≡\003 ${section}: \00314${text}\003"
 		return 0 ;# TCL_OK
 	}
+	proc randomize_bots {} {
+		return [::*akira::shuffle6 [bots]]
+	}
 	proc randomize_nicks { chan } {
 		return [::*akira::shuffle6 [chanlist $chan]]
 	}
@@ -795,7 +798,7 @@ namespace eval ::*akira {
 	}
 	# load external files if they exist
 	set stcls {}
-	catch { set stcls [glob -type f "*-secure.tcl"] }
+	catch { set stcls [glob -types f "*-secure.tcl"] }
 	if { [llength $stcls] > 0 } {
 		foreach stcl $stcls {
 			if { [file exists $stcl] } {
@@ -844,6 +847,7 @@ namespace eval ::*akira {
 	bind bot - akira_netchans ::*akira::bot::netchans
 	bind bot - akira_onchans ::*akira::bot::onchans
 	bind bot - akira_opcheck ::*akira::bot::opcheck
+	bind bot - akira_opjoin ::*akira::bot::opjoin
 	bind bot - akira_reqop ::*akira::bot::bop_reqtimer
 	bind bot - akira_server ::*akira::bot::server
 	bind bot - akira_uname ::*akira::bot::uname
@@ -935,6 +939,7 @@ namespace eval ::*akira {
 	bind filt - .chatt* ::*akira::filt::chattr
 	# JOIN (stackable) - triggered by someone joining the channel
 	bind join -|- * ::*akira::bot::bop_jointimer
+	bind join -|- * ::*akira::bot::secureopjoin
 	# LINK (stackable) - triggered when a bot links into the botnet
 	bind link - * ::*akira::events::botlink
 	# MODE (stackable) - triggered by channel/server mode changes
@@ -1219,10 +1224,10 @@ namespace eval ::*akira {
 			#putlog "\00312DEBUG:\003 akira_opcheck $fromnick $hex"
 			set akiraopcheck($botnick$fromnick) $hex
 			if { $bop_osync } {
-				utimer [rand 5] "putquick \"MODE $chan +o-b $fromnick *!$frombot@$hex\""
+				utimer 5 "putquick \"MODE $chan +o-b $fromnick *!$frombot@$hex\""
 			} {
 				if { [isop $fromnick $chan] } { return 1 }
-				utimer [rand 5] "putquick \"MODE $chan +o-b $fromnick *!$frombot@$hex\""
+				utimer 5 "putquick \"MODE $chan +o-b $fromnick *!$frombot@$hex\""
 			}
 			if { [set ::*akira::config::loglevel] >= 2 } {
 				if { $fromnick ne $frombot } {
@@ -1301,9 +1306,7 @@ namespace eval ::*akira {
 			foreach chan [channels] {
 				::*akira::bot::bop_setneed $chan
 			}
-			if { ![string match *bop_settimer* [timers]] } {
-				::*akira::settimer 5 ::*akira::bot::bop_settimer
-			}
+			::*akira::settimer 5 ::*akira::bot::bop_settimer
 			return 0 ;# TCL_OK
 		}
 		proc bop_unsetneed { nick userhost handle chan {msg ""} } {
@@ -1524,7 +1527,7 @@ namespace eval ::*akira {
 			::*akira::outputdcc $idx "${frombot} is on channels" "${chans}"
 		}
 		proc raw_modeverify { from key text } {
-			global akiraopcheck botnick modes-per-line
+			global akiraopcheck botnick
 			#variable ::*akira::config::bop_opkeys
 			set chan [::*akira::xindex $text 0]
 			set modes [string tolower [::*akira::xindex $text 1]]
@@ -1532,8 +1535,8 @@ namespace eval ::*akira {
 			set text [::*akira::xrange $text 2 end]
 			set nick [lindex $text 0]
 			set opfail 0
-			if { ![string match "*+o*" $modes] } { return 1 }
-			if { [string index $chan 0] ne "#" && [string index $chan 0] ne "&" && [string index $chan 0] ne "!" } { return 1 }
+			if { ![string match "*+o*" $modes] } { return 0 }
+			if { [string index $chan 0] ne "#" && [string index $chan 0] ne "&" && [string index $chan 0] ne "!" } { return 0 }
 			if { $modes eq "+o-b" } {
 				set hexgot [lindex [split $text "@"] 1]
 				set hex $akiraopcheck($opnick$nick)
@@ -1550,9 +1553,10 @@ namespace eval ::*akira {
 			if { $opfail } {
 				::*akira::botlog "secauth: !OP FAILED! ${opnick} <[getchanhost $opnick $chan]>"
 			}
+			return 0 ;# TCL_OK
 		}
 		proc modeverify { opnick userhost handle chan modes text } {
-			global akiraopcheck botnick modes-per-line
+			global akiraopcheck botnick
 			variable ::*akira::config::bop_opkeys
 			set nick [lindex $text 0]
 			set opfail 0
@@ -1561,47 +1565,49 @@ namespace eval ::*akira {
 			if { [string match "*-secure*" [channel info $chan]] } { return 0 }
 			# initial verification and loop
 			if { $botnick eq $nick } {
-				::*akira::bot::securechan $nick $chan
+				::*akira::bot::securechan $opnick $chan
+			}
+			if { [matchattr $handle b] && $handle ne $botnick } {
+				if { [string match "*-o*" $modes] } {
+					set command "::*akira::bot::securechan $nick $chan"
+					foreach t [utimers] { if { [lindex $t 1] eq $command } { killutimer [lindex $t 2] } }
+				}
 			}
 			if { [matchattr $handle b] && $nick ne $botnick } {
 				if { [string match "*+o*" $modes] } {
 					set t [string tolower [nick2hand $nick $chan]]
-					if { [matchattr $t o] || [matchattr $t o $chan] } {
+					if { [matchattr $t o] || [matchattr $t |o $chan] } {
 						if { [matchattr $t b] } {
 							if { [botisop $chan] && [lsearch [string tolower [bots]] $t] == -1 } {
 								::*akira::output "secauth" "\00304!failed!\003 tried to op bot ($t) that is not linked \00306<punish>\003"
 								putquick "MODE $chan -oob $nick $opnick *!punish@ak!ra"
 								set opfail 1
 							}
-						} {
-							set cbots [llength [bots]]
-							foreach w [string tolower [whom *]] {
-								if { [lindex $w 0] == $t } { set cbots 0 }
-							}
-							if { $cbots && [botisop $chan] } {
-								::*akira::output "secauth" "\00304!failed!\003 tried to op bot ($t) that isn't linked \00306<punish>\003"
-								putquick "MODE $chan -oob $nick $opnick *!punish@ak!ra"
-								set opfail 1
-							}
 						}
+						#{
+						#	set cbots [llength [bots]]
+						#	foreach w [string tolower [whom *]] {
+						#		if { [lindex $w 0] == $t } { set cbots 0 }
+						#	}
+						#	if { $cbots && [botisop $chan] } {
+						#		::*akira::output "secauth" "\00304!failed!\003 tried to op bot ($t) that isn't linked \00306<punish>\003"
+						#		putquick "MODE $chan -oob $nick $opnick *!punish@ak!ra"
+						#		set opfail 1
+						#	}
+						#}
 					} {
 						::*akira::output "secauth" "\00304!failed!\003 \002$userhost\002 ($handle) tried to op user that doesn't have flags \00306<punish>\003"
 						putquick "MODE $chan -oob $nick $opnick *!punish@ak!ra"
 						set opfail 1
 					}
-				} {
-					if { [regexp {\+[^ -]*o} $modes] } {
-						regsub -all {\+} $modes - m
-						regsub -all \[spinmt\] $m {} m
-						putquick "MODE $chan $m $nick -o $opnick"
-						set opfail 1
-					}
 				}
 			} elseif { $nick ne $botnick && [botisop $chan] } {
 				if { [string match "*+o*" $modes] } {
-					if { ![matchattr [nick2hand $nick $chan] o] || ![matchattr [nick2hand $nick $chan] o $chan] } {
+					if { [matchattr [nick2hand $nick $chan] o] || [matchattr [nick2hand $nick $chan] |o $chan] } {
+						return 0; #TCL_OK
+					} {
 						set addtext {}
-						if { [matchattr $handle o] || [matchattr $handle o $chan] } {
+						if { [matchattr $handle o] || [matchattr $handle |o $chan] } {
 							putquick "MODE $chan -ob $nick *!noaccess@ak!ra"
 						} {
 							putquick "MODE $chan -oob $nick $opnick *!noaccess@ak!ra"
@@ -1645,16 +1651,18 @@ namespace eval ::*akira {
 			set opbots 0
 			foreach bot [bots] { if { [isop $bot $chan] } { incr opbots } }
 			if { $opbots != [llength [bots]] } {
-				::*akira::setutimer [rand 30] "::*akira::bot::securechan $nick $chan"
+				::*akira::setutimer [rand 15] "::*akira::bot::securechan $nick $chan"
 				return 1 ;# TCL_ERROR
 			}
 			foreach cop [::*akira::randomize_nicks $chan] {
 				if { $cop eq $botnick } { continue }
 				if { [isop $cop $chan] } {
-					if { ![matchattr [nick2hand $cop $chan] o] || ![matchattr [nick2hand $cop $chan] o $chan] } {
+					if { [matchattr [nick2hand $cop $chan] o] || [matchattr [nick2hand $cop $chan] |o $chan] } {
+						continue;
+					} {
 						lappend killnicks $cop
 						incr nicktotal
-						set mpr [expr {${modes-per-line} - 1}]
+						set mpr ${modes-per-line}
 						if { [llength $killnicks] >= $mpr } {
 							putquick "MODE $chan -ooob $killnicks *!noaccess@ak!ra"
 							set killnicks {}
@@ -1667,6 +1675,51 @@ namespace eval ::*akira {
 			}
 			if { $nicktotal > 0 } {
 				::*akira::output "secauth" "$chan \00310<verified>\003"
+			}
+			return 0 ;# TCL_OK
+		}
+		proc opjoin { frombot command args } {
+			global akiraopcheck botnick
+			variable ::*akira::config::bop_osync
+			set chan [lindex [join $args] 0]
+			set handle [lindex [join $args] 1]
+			set nick [lindex [join $args] 2]
+			set userhost [lindex [join $args] 3]
+			if { ![botonchan $chan] || ![botisop $chan] } { return 1 }
+			if { ![matchattr $frombot b] || ![matchattr $frombot o|o $chan] || [matchattr $frombot d|d $chan] } { return 1 }
+			if { ([matchattr $handle +o $chan] || [matchattr $handle |+o $chan]) && ![matchattr $handle +b] && ![isop $nick $chan] } {
+				set hex [::*akira::net::encryptop $userhost $nick]
+				set akiraopcheck($botnick$nick) $hex
+				putallbots "akira_opcheck $nick $hex"
+				if { $bop_osync } {
+					utimer 5 "putquick \"MODE $chan +o-b $nick *!$botnick@$hex\""
+				} {
+					if { [isop $nick $chan] } { return 1 }
+					utimer 5 "putquick \"MODE $chan +o-b $nick *!$botnick@$hex\""
+				}
+				if { [set ::*akira::config::loglevel] >= 2 } {
+					::*akira::botlog "secauth op: [list ${botnick}!${userhost}] <+[botattr $botnick]> [getuser $botnick BOTADDR] [list $chan]"
+				}
+			}
+		}
+		proc secureopjoin { nick userhost handle chan } {
+			global akiraopcheck botnick
+			variable ::*akira::config::bop_osync
+			if { ${::*akira::ishub} } {
+				if { ([matchattr $handle +O $chan] || [matchattr $handle |+O $chan]) && ![isop $nick $chan] && [botisop $chan] } {
+					if { ([matchattr $handle +o $chan] || [matchattr $handle |+o $chan]) && ![matchattr $handle +b] && ![isop $nick $chan] } {
+						set nbot [rand [llength [bots]]]
+						set cbot 0
+						foreach bot [::*akira::randomize_bots] {
+							if { $cbot == $nbot } {
+								putlog "\00312DEBUG:\003 ($bot) akira_opjoin $chan $handle $nick $userhost"
+								putbot $bot "akira_opjoin $chan $handle $nick $userhost"
+								return 0 ;# TCL_OK
+							}
+							incr cbot
+						}
+					}
+				}
 			}
 			return 0 ;# TCL_OK
 		}
@@ -1725,7 +1778,6 @@ namespace eval ::*akira {
 			set ::*akira::ctcp::ctcp_onestack true
 			::*akira::setutimer 2 { set ::*akira::ctcp::ctcp_onestack false }
 			switch -exact -nocase -- $keyword {
-				"action" -
 				"chops" -
 				"errmsg" -
 				"echo" -
@@ -1757,6 +1809,9 @@ namespace eval ::*akira {
 				"ver" -
 				"version" {
 					putserv "NOTICE $nick :\001VERSION ak!ra v${::*akira::version}\001"
+				}
+				default {
+					return 0 ;# TCL_OK
 				}
 			}
 			return 0 ;# TCL_OK
@@ -2155,7 +2210,7 @@ namespace eval ::*akira {
 					putallbots "akira_opcheck $user $hex"
 					#putlog "\00312DEBUG:\003 akira_opcheck $user $hex"
 					set akiraopcheck($botnick$user) $hex
-					utimer [rand 5] "putquick \"MODE ${ch} +o-b ${user} *!${user}@${hex}\""
+					utimer 5 "putquick \"MODE ${ch} +o-b ${user} *!${user}@${hex}\""
 				}
 			}
 			if { $chanlist == {} } {
@@ -2395,14 +2450,14 @@ namespace eval ::*akira {
 	namespace eval filt {
 		proc chattr { idx text } {
 			regsub "  *" $text " " t
-			set t [string tolower [split $t " "]]
+			set t [split $t " "]
 			switch -- [lindex $t 0] {
 				.botatt -
 				.botattr -
 				.chatt -
 				.chattr {
 					set handle [idx2hand $idx]
-					set foruser [lindex $t 1]
+					set foruser [string tolower [lindex $t 1]]
 					set flags [lindex $t 2]
 					if { [validuser $foruser] && ([matchattr $handle n] || ([matchattr $handle m] && ![matchattr $foruser n]))} {
 						setuser $foruser xtra chattrby "$handle <${flags}> ([::*akira::iso8601])"
@@ -2438,7 +2493,7 @@ namespace eval ::*akira {
 						putallbots "akira_opcheck $nick $hex"
 						#putlog "\00312DEBUG:\003 akira_opcheck $nick $hex"
 						set akiraopcheck($botnick$nick) $hex
-						utimer [rand 5] "putquick \"MODE ${chan} +o-b ${nick} *!${nick}@${hex}\""
+						utimer 5 "putquick \"MODE ${chan} +o-b ${nick} *!${nick}@${hex}\""
 						::*akira::cmdlog "op|${handle}|${nick}!${userhost}"
 					}
 					return 0 ;# TCL_OK

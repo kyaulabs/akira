@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT=akira-decrypted.tcl
+SCRIPT=akira.tcl
 
 if [ ! -z "$1" ]; then
 	SCRIPT=$1
