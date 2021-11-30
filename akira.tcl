@@ -1,4 +1,4 @@
-# $Arch: akira.tcl,v 2.057 2019/01/25 16:11:03 kyau Exp $
+# $KYAULabs: akira.tcl,v 2.5.8 2021/11/30 00:30:48 kyau Exp $
 #
 #   █████████▀█ █████████ █ ▀▀▀▀▀▀▀▀▀▀ █████████▀█ █████████▀█
 #   █████████ █ █████████ █ ██████████ █████████ █ █████████ █
@@ -6,7 +6,7 @@
 # ───────────────────────── ██████████ ──────────────────bz!────
 #
 # ak!ra.tcl - botpack for hybrid(core)
-# Copyright (C) 2018 KYAU Labs (https://kyaulabs.com)
+# Copyright (C) 2021 KYAU Labs (https://kyaulabs.com)
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -130,67 +130,7 @@ set default-chanset { -autoop -autovoice -bitch -cycle +dontkickops -dynamicbans
 loadmodule server
 set net-type 0
 set realname "hybrid(core) \[$network\]"
-set default-port 6667
-# north america
-#	irc.servercentral.net:+9999		# Chicago, IL
-#	irc.mzima.net:+9999				# Los Angeles, CA / IPv6
-#	irc.choopa.net:+9999			# New York, NY / IPv6
-#	irc.colosolutions.net:+9999		# Orlando, FL
-#	irc.Prison.NET:6667				# San Francisco, CA
-#	irc2.choopa.net:+9999			# New York, NY / IPv6
-# europe
-#	efnet.port80.se:+9999			# Stockholm, Sweden / IPv6
-#	irc.inet.tele.dk:+9999			# Aarhus, Denmark / IPv6
-#	irc.underworld.no:+9999			# Oslo, Norway / IPv6
-#	efnet.portlane.se:+9999			# Stockholm, Sweden / IPv6
-#	irc.efnet.nl:+9999				# Netherlands
-#	irc.homelien.no:6667			# Oslo, Norway / IPv6
-#	irc.nordunet.se:+9999			# Stockholm, Sweden / IPv6
-#	irc.du.se:+6697					# Borlange, Sweden
-array set serversloc {}
-set serversloc(irc.servercentral.net:+9999) {Chicago, IL/SSL}
-set serversloc(irc.mzima.net:+9999) {Los Angeles, CA/SSL:IPv6:-IDENT}
-set serversloc(irc.choopa.net:+9999) {New York, NY/SSL:IPv6}
-set serversloc(irc.colosolutions.net:+9999) {Orlando, FL/SSL}
-set serversloc(irc2.choopa.net:+9999) {New York, NY/SSL:IPv6}
-set serversloc(efnet.port80.se:+9999) {Stockholm, Sweden/SSL:IPv6}
-set serversloc(irc.inet.tele.dk:+9999) {Aarhus, Denmark/SSL:IPv6}
-set serversloc(irc.underworld.no:+9999) {Oslo, Norway/SSL:IPv6}
-set serversloc(efnet.portlane.se:+9999) {Stockholm, Sweden/SSL:IPv6}
-set serversloc(irc.efnet.nl:+9999) {Netherlands/SSL}
-set serversloc(irc.nordunet.se:+9999) {Stockholm, Sweden/SSL:IPv6}
-set serversloc(irc.du.se:+6697) {Borlange, Sweden/SSL}
-if { ${prefer-ipv6} } {
-set servers {
-irc.mzima.net:+9999
-irc.choopa.net:+9999
-irc2.choopa.net:+9999
-efnet.port80.se:+9999
-irc.inet.tele.dk:+9999
-irc.underworld.no:+9999
-efnet.portlane.se:+9999
-irc.nordunet.se:+9999
-}
-} {
-set servers {
-irc.servercentral.net:+9999
-irc.mzima.net:+9999
-irc.choopa.net:+9999
-irc.colosolutions.net:+9999
-irc2.choopa.net:+9999
-efnet.port80.se:+9999
-irc.inet.tele.dk:+9999
-irc.underworld.no:+9999
-efnet.portlane.se:+9999
-irc.efnet.nl:+9999
-irc.nordunet.se:+9999
-irc.du.se:+6697
-}
-}
-array set serverlist {}
-foreach item [lsort -unique [concat {*}$servers]] {
-	set serverslist($item) ""
-}
+set default-port +6697
 set msg-rate 2
 set keep-nick 1
 set quiet-reject 1
@@ -262,9 +202,6 @@ set force-channel 0
 set info-party 0
 # }}}
 # }}}
-# hybrid(core): ports {{{
-
-# }}}
 # }}}
 # ak!ra botpack {{{
 namespace eval ::*akira {
@@ -272,10 +209,10 @@ namespace eval ::*akira {
 	global botnet-nick nick ctcp-version infobot hub server userfile
 
 	variable author "kyau"
-	variable t9version "1.045(hc1.8.4)"
-	variable version "2.057+cbc"
+	variable t9version "1.4.5(hc1.8.4)"
+	variable version "2.5.8+cbc"
 	variable hcversion "${ctcp-version}"
-	variable release_date "2019.01.25"
+	variable release_date "2021.11.26"
 	variable ishub 0
 	variable isinfo 0
 	
@@ -292,7 +229,7 @@ namespace eval ::*akira {
 		# botpack logging level (0=none, 1=invite+limit+key+unban, 2=1+ops)
 		variable loglevel 2
 		# key used for dcc/schat/telnet verification [encrypt key key]
-		variable securekey {*DQ1JH2Y5W6dmpy3yTazg2Q==}
+		variable securekey {*QKbChZZVPitc/EYOzIOI1g==}
 		# determine modes-per-line from net-type
 		if {[info exists net-type]} {
 			switch -- ${net-type} {
@@ -353,7 +290,7 @@ namespace eval ::*akira {
 		variable bc_mode "normal"
 		# channel key list
 		variable bc_keys {
-			{#akira {%$`N:k.k~JF7#v:6:_U<\L*Q@yC]m[6d}}
+			{#ak!ra {%$`N:k.k~JF7#v:6:_U<\L*Q@yC]m[6d}}
 		}
 		# }}}
 	}
@@ -443,7 +380,7 @@ namespace eval ::*akira {
 		putdcc $idx "\00314█ \00311█▀█ █ █ █ █▀▄ █▀█ \003\00314█ bz!\003"
 		putdcc $idx "\00314█▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\003▄\00300▄\003"
 		putdcc $idx ""
-		putdcc $idx "\00301,01.\003bot: \00310[string tolower ${botnick}]\003  users: \00310[countusers]\003  efnet: \00310[string tolower ${server}]\003"
+		putdcc $idx "\00301,01.\003bot: \00310[string tolower ${botnick}]\003  users: \00310[countusers]\003  server: \00310[string tolower ${server}]\003"
 		putdcc $idx "\00301,01.\003channels: $chans"
 		if { $motd_userlist == 1 } {
 			set pusers {}
@@ -641,7 +578,7 @@ namespace eval ::*akira {
 	}
 	proc secureinit { event } {
 		global botnet-nick botnick hub serveraddress
-		putquick "MODE $botnick +i-ws"
+		putquick "MODE $botnick +i-wxs"
 		if { ${::*akira::ishub} } {
 			::*akira::bot::server ${botnet-nick} "akira_server" $serveraddress
 		} {
