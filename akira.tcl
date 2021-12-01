@@ -229,7 +229,7 @@ namespace eval ::*akira {
 		# botpack logging level (0=none, 1=invite+limit+key+unban, 2=1+ops)
 		variable loglevel 2
 		# key used for dcc/schat/telnet verification [encrypt key key]
-		variable securekey {*QKbChZZVPitc/EYOzIOI1g==}
+		variable securekey {*epkJSwvIT2Qe2tDPWyxWng==}
 		# determine modes-per-line from net-type
 		if {[info exists net-type]} {
 			switch -- ${net-type} {
